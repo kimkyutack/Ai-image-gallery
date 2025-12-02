@@ -133,7 +133,7 @@ export default function ImageGenerationForm({
           <button
             type="submit"
             disabled={!prompt.trim() || isLoading}
-            className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-3.5 font-semibold text-white shadow-lg transition-all hover:from-blue-700 hover:to-purple-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:from-blue-600 disabled:hover:to-purple-600 disabled:hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            className="w-full rounded-lg bg-blue-600 cursor-pointer px-6 py-3.5 font-semibold text-white shadow-lg transition-all hover:from-blue-700 hover:to-purple-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:from-blue-600 disabled:hover:to-purple-600 disabled:hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
           >
             {isLoading ? (
               <span className="flex items-center justify-center gap-2">

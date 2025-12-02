@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import Replicate from "replicate";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { prompt, model, size } = body;
-    // numImages는 추후 여러 이미지 생성 기능 구현 시 사용
+    const { prompt, size } = body;
 
     if (!prompt) {
       return NextResponse.json(
@@ -13,68 +13,78 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Hugging Face Inference API 사용
-    // 환경 변수에서 API 키 가져오기
-    const apiKey = process.env.HUGGINGFACE_API_KEY;
+    const [width, height] = size.split("x").map(Number);
 
-    if (!apiKey) {
+    const useMock =
+      process.env.USE_MOCK_API === "true" || !process.env.REPLICATE_API_TOKEN;
+
+    let imageUrl: string;
+    let modelName: string = "mock";
+
+    if (useMock) {
+      console.log("Mock 모드: 플레이스홀더 이미지 생성");
+
+      const svg = `
+        <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+          <rect width="100%" height="100%" fill="#f3f4f6"/>
+          <text x="50%" y="50%" font-family="Arial" font-size="24" fill="#6b7280" text-anchor="middle" dominant-baseline="middle">
+            ${prompt.substring(0, 30)}...
+          </text>
+        </svg>
+      `.trim();
+
+      const svgBuffer = Buffer.from(svg);
+      const base64Svg = svgBuffer.toString("base64");
+      imageUrl = `data:image/svg+xml;base64,${base64Svg}`;
+    } else {
+      const replicate = new Replicate({
+        auth: process.env.REPLICATE_API_TOKEN,
+      });
+
+      modelName = "black-forest-labs/flux-schnell";
+
+      console.log("이미지 생성 시작:", { prompt, width, height });
+
+      const output = await replicate.run(modelName as `${string}/${string}`, {
+        input: {
+          prompt: prompt,
+          width: width,
+          height: height,
+          output_format: "png",
+          output_quality: 90,
+        },
+      });
+
+      console.log("이미지 생성 완료");
+
+      imageUrl = Array.isArray(output) ? output[0] : output;
+    }
+
+    if (!imageUrl) {
       return NextResponse.json(
-        { error: "API 키가 설정되지 않았습니다." },
+        { error: "이미지 URL을 가져올 수 없습니다." },
         { status: 500 }
       );
     }
 
-    // Stable Diffusion 모델 사용
-    const modelId =
-      model === "stable-diffusion"
-        ? "stabilityai/stable-diffusion-2-1"
-        : "runwayml/stable-diffusion-v1-5";
+    let base64ImageUrl: string;
 
-    // 이미지 크기 파싱
-    const [width, height] = size.split("x").map(Number);
-
-    // Hugging Face API 호출
-    const response = await fetch(
-      `https://api-inference.huggingface.co/models/${modelId}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inputs: prompt,
-          parameters: {
-            width,
-            height,
-            num_inference_steps: 50,
-            guidance_scale: 7.5,
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return NextResponse.json(
-        { error: `API 오류: ${errorText}` },
-        { status: response.status }
-      );
+    if (useMock || imageUrl.startsWith("data:")) {
+      base64ImageUrl = imageUrl;
+    } else {
+      const imageResponse = await fetch(imageUrl);
+      const imageBlob = await imageResponse.blob();
+      const arrayBuffer = await imageBlob.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString("base64");
+      base64ImageUrl = `data:image/png;base64,${base64}`;
     }
 
-    // 이미지 데이터를 base64로 변환
-    const imageBlob = await response.blob();
-    const arrayBuffer = await imageBlob.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
-    const imageUrl = `data:image/png;base64,${base64}`;
-
-    // 생성된 이미지 정보 반환
     const generatedImage = {
       id: `img-${Date.now()}`,
-      url: imageUrl,
+      url: base64ImageUrl,
       prompt,
       createdAt: new Date().toISOString(),
-      model: modelId,
+      model: modelName,
       width,
       height,
     };
@@ -86,7 +96,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("이미지 생성 오류:", error);
     return NextResponse.json(
-      { error: "이미지 생성 중 오류가 발생했습니다." },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "이미지 생성 중 오류가 발생했습니다.",
+      },
       { status: 500 }
     );
   }
